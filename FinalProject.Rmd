@@ -1,0 +1,92 @@
+---
+title: "Practical Machine Learning - Final Project"
+author: "Rob Reynolds"
+date: "August 27, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, cache=TRUE}
+train_full <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv',stringsAsFactors = FALSE,na.strings=c(""))
+testing <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv',stringsAsFactors = FALSE)
+
+train_full <- train_full[,-c(1:5)]
+
+```
+
+###Introduction  
+The data used in this project come from the Human Activity Recognition (HAR) research group, an amateur collaborative group of data science and wearable device enthusiasts. The data pertain to 6 participants doing a dumbbell curl in intentionally correct way and incorrect ways. The challenge inherent in these data is to have an analytic model that can distinguish between a dumbbell curl done with proper form and one done with improper form.  
+
+###Data and Data Preparation  
+The HAR suppied two data sets for this modeling exercise: a training data set and a test data set. The training dataset contained 19,200 rows of data, where each row is a single execution of a bicep curl; the test data set had 20 additional rows of the same. There were initially a total of 160 columns in the data. 
+
+In order for many prediction algorithms to function properly, the amount of missing data should be minimal. An examination of the data in the trianing set revealed many variables that were "sparse" (had many missing values). To deal with this, I created a loop that identified the columns without complete data and output a list of column numbers, as shown here:
+
+```{r cache=TRUE, echo=TRUE, cache=TRUE, message=FALSE}
+
+## Identify incomplete columns from the dataset
+mark <- rep(NA,ncol(train_full))
+for (i in 1:ncol(train_full)){
+  if ((sum(table(train_full[i]))<nrow(train_full)) | (sum(train_full[i]=="NA")>0)) {mark[i] <- i}
+}
+mark <- mark[!is.na(mark)]
+mark  
+```  
+
+For the sake of simplicity, I then dropped these columns from the dataset. I then also dropped some irrelevant fields such as timestamp fields and metadata fields. This left 51 features and 1 target variable.
+
+```{r echo=FALSE, eval=TRUE, cache=TRUE, message=FALSE}
+train_complete <- train_full[,-mark]
+
+## Split training set into true train set and a validation set
+library(caret)
+set.seed(4501)
+split <- createDataPartition(y=train_complete$classe,p=0.8)[[1]]
+train <- train_complete[split,]
+valid <- train_complete[-split,]
+```  
+
+In order to measure how well potential models fit (i.e. perform cross-validation), I needed a training and a validation set. I therefore enacted an 80/20 training/validation split on the input training set. 
+
+###Model building  
+With an analyzable data set prepared, I then had to select an algorithm to train a model. The outcome was contained in the variable *classe*, which coded each record with a letter value between *A* and *E*. Because the outcome in question was really making a prediction of 5 different classes, I decided to see how a CART model would do in this scenario. 
+
+```{r echo=TRUE, eval=TRUE, message=FALSE}
+## Classification tree for predicting classe
+set.seed(745789)
+library(caret)
+library(AppliedPredictiveModeling)
+
+tree1 <- train(classe~.,data=train,method="rpart")
+#fancyRpartPlot(tree1$finalModel)
+confusionMatrix(predict(tree1,newdata=valid),valid$classe)
+```
+
+The confusion matrix and related diagnostics demonstrates that this model is not particularly good at classifying the outcomes. The overall accuracy of the model was only 49%. This essentially means it gets more predictions wrong than it does right. The model was not able to discern outcome *D* at all, and was rather poor at predicting outcomes *A*, *B*, *C* as well. I decided a different, more powerful approach was needed, so I next tried a random forest:
+
+```{r echo=TRUE, eval=TRUE, message=FALSE, cache=TRUE}
+## Random Forest for predicting classe
+library(caret)
+set.seed(81012)
+rf1 <- train(classe~.,method="rf",data=train)
+confusionMatrix(valid$classe,predict(rf1,newdata=valid))
+```  
+
+Here the confusion matrix demonstrates perfect prediction within the validation set.   
+
+###Conclusions and Discussion
+Once I had this new model trained, which seemed to have remarkably high accuracy on both the training and validation sets, I set to answering the quiz questions. The quiz asked for predictions on all 20 of the examples in the test set.I therefore used the *predict* command to make these predictions.  
+
+```{r echo=TRUE, eval=TRUE, message=FALSE, cache=TRUE}
+## Make prediction on testing set
+predict(rf1,newdata=testing)
+```  
+
+Upon entering my predictions into the quiz, I found that my model correctly classified all 20 test records, for a perfect score.  
+
+In reflecting on my modeling experience, I suspect that there were too many features and too much data for a single decision tree to be able to make a good prediciton. However, the random forest was able to do such as good job for precisely the same reasons: random forests thrive on large datasets.  
+
+Since I found a good model relatively quickly, I did not try other methods such as neural nets or ensemble methods, though I suspect those too may have performed well. In the future, and in real modeling situations, I will make a point to try other individual approaches as well as ensembling all of them together to see what produces the greatest accuracy of prediction.
